@@ -4,6 +4,7 @@ import com.sun.jna.ptr.PointerByReference;
 
 import javax.sound.sampled.*;
 import java.io.IOException;
+import java.io.SyncFailedException;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -15,10 +16,10 @@ import java.util.List;
 public class VOIP {
 
 	private static final int SAMPLE_RATE = 48000;
-
+	private static int sendingPort;
 	private AudioFormat audioFormat;
 	private static InetAddress host;
-	private static int port;
+	private static int receivingPort;
 
 	private AudioFormat getAudioFormat() {
 		float sampleRate = 48000.0F;
@@ -28,11 +29,9 @@ public class VOIP {
 	}
 
 	private void get_and_play_audioStream(int port) {
-
 		//create the server socket to receive encoded audio
-		try (ServerSocketChannel serverChannel = ServerSocketChannel.open()){
-
-			serverChannel.bind(new InetSocketAddress(host, port));
+		try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
+			serverChannel.bind(new InetSocketAddress(port));
 			SocketChannel channel = serverChannel.accept();
 			IntBuffer error = IntBuffer.allocate(4);
 			PointerByReference opusDecoder = Opus.INSTANCE.opus_decoder_create(SAMPLE_RATE, 1, error);
@@ -55,7 +54,7 @@ public class VOIP {
 				while (true) {
 
 					int numBytesRead = channel.read(buffer);
-
+					//System.out.println("			Receiving: " + buffer.get(0) + " " + buffer.get(1) + " " + buffer.get(2) + " " + buffer.get(3));
 					if (numBytesRead == -1) {
 						channel.close();
 						System.exit(0);
@@ -63,8 +62,12 @@ public class VOIP {
 						buffer.flip();
 					}
 
-					ShortBuffer decodedFromNetwork = OpusCodec.decode(opusDecoder, buffer);
-					OpusCodec.playBack(sourceDataLine, decodedFromNetwork);
+					try{
+						ShortBuffer decodedFromNetwork = OpusCodec.decode(opusDecoder, buffer);
+						OpusCodec.playBack(sourceDataLine, decodedFromNetwork);
+					} catch (IllegalArgumentException e) {
+						//do nothing
+					}
 					buffer.compact(); //clears the remaining bytes in buffer
 				}
 
@@ -81,9 +84,7 @@ public class VOIP {
 	}
 
 	private void capture_and_send_audioStream(InetAddress host, int port) {
-
 		try {
-
 			Mixer.Info[] mixerInfo = AudioSystem.getMixerInfo();    //get available mixers
 			System.out.printf("%d\n",mixerInfo.length	);
 			System.out.println("Available mixers:");
@@ -122,6 +123,7 @@ public class VOIP {
 					ShortBuffer dataFromMic = OpusCodec.recordFromMicrophone(targetDataLine);
 					List<ByteBuffer> packets = OpusCodec.encode(opusEncoder, dataFromMic);
 					ByteBuffer[] bbs = packets.toArray(new ByteBuffer[0]);
+					//System.out.println("sending: " + bbs[0].get(0) + " " + bbs[0].get(1) + " " + bbs[0].get(2) + " " + bbs[0].get(3));
 					long count = channel.write(bbs);
 					for (ByteBuffer bb : bbs)
 						bb.compact();
@@ -142,7 +144,7 @@ public class VOIP {
 
 	public static void main( String args[] ) {
 		org.apache.log4j.BasicConfigurator.configure();
-		if( args.length != 2 ) {
+		if( args.length != 3 ) {
 			System.out.println( "usage: Please Enter host and then port" ) ;
 			return ;
 		}
@@ -150,19 +152,20 @@ public class VOIP {
 		try {
 			// Convert the arguments to ensure that they are valid
 			host = InetAddress.getByName( args[0] ) ;
-			port = Integer.parseInt( args[1] ) ;
+			sendingPort = Integer.parseInt( args[1] );
+			receivingPort = Integer.parseInt( args[2] ) ;
 			final VOIP w = new VOIP();
 
 			Thread t1 = new Thread(new Runnable() {
 				public void run(){
-					w.capture_and_send_audioStream(host, port);
+					w.capture_and_send_audioStream(host, sendingPort);
 				}
 
 			});
 
 			Thread t2 = new Thread(new Runnable() {
 				public void run(){
-					w.get_and_play_audioStream(port);
+					w.get_and_play_audioStream(receivingPort);
 				}
 
 			});
@@ -176,7 +179,3 @@ public class VOIP {
 		}
 
 	}
-
-
-}
-
