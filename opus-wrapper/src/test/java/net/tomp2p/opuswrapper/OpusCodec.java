@@ -4,62 +4,21 @@ import com.sun.jna.ptr.PointerByReference;
 
 import javax.sound.sampled.*;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 public class OpusCodec {
 
-    private static final int SAMPLE_RATE = 48000;
     private static final int FRAME_SIZE = 480;
 
-    /*
-    public static void main(String[] args) throws LineUnavailableException {
-        AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, true);
+    public static ShortBuffer decode(PointerByReference opusDecoder, ByteBuffer transferedBytes) {
+        ShortBuffer shortBuffer = ShortBuffer.allocate(FRAME_SIZE);
+        byte[] b = new byte[transferedBytes.remaining()];
+        transferedBytes.get(b);
+        int decoded = Opus.INSTANCE.opus_decode(opusDecoder, b, b.length, shortBuffer, FRAME_SIZE, 0);
 
-        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-        if (!AudioSystem.isLineSupported(info)) {
-            throw new LineUnavailableException("not supported");
-        }
-        TargetDataLine microphone = AudioSystem.getTargetDataLine(format);
-        // Obtain and open the line.
-        microphone.open(format);
-        // Begin audio capture.
-        microphone.start();
-
-        SourceDataLine speaker = AudioSystem.getSourceDataLine(format);
-        speaker.open(format);
-        speaker.start();
-
-        IntBuffer error = IntBuffer.allocate(4);
-        PointerByReference opusDecoder = Opus.INSTANCE.opus_decoder_create(SAMPLE_RATE, 1, error);
-        PointerByReference opusEncoder = Opus.INSTANCE.opus_encoder_create(SAMPLE_RATE, 1, Opus.OPUS_APPLICATION_RESTRICTED_LOWDELAY, error);
-
-        while (true) {
-            ShortBuffer dataFromMic = recordFromMicrophone(microphone);
-            long start = System.nanoTime();
-            List<ByteBuffer> packets = encode(opusEncoder, dataFromMic);
-            // packets go over network
-            ShortBuffer decodedFromNetwork = decode(opusDecoder, packets);
-            long stop = System.nanoTime();
-            System.out.println((stop - start) / 1000000D + "ms");
-            playBack(speaker, decodedFromNetwork);
-        }
-
-//        Opus.INSTANCE.opus_decoder_destroy(opusDecoder);
-//        Opus.INSTANCE.opus_encoder_destroy(opusEncoder);
-    }
-    */
-
-    public static ShortBuffer decode(PointerByReference opusDecoder, byte[] transferedBytes) {
-        ShortBuffer shortBuffer = ShortBuffer.allocate(transferedBytes.length * FRAME_SIZE);
-        //for (ByteBuffer dataBuffer : packets) {
-        //    byte[] transferedBytes = new byte[dataBuffer.remaining()];
-        //    dataBuffer.get(transferedBytes);
-            int decoded = Opus.INSTANCE.opus_decode(opusDecoder, transferedBytes, transferedBytes.length, shortBuffer, FRAME_SIZE, 0);
-            shortBuffer.position(shortBuffer.position() + decoded);
-        //}
+        shortBuffer.position(shortBuffer.position() + decoded);
         shortBuffer.flip();
         return shortBuffer;
     }
@@ -77,7 +36,6 @@ public class OpusCodec {
             shortBuffer.position(shortBuffer.position() + FRAME_SIZE);
         }
 
-        // used for debugging
         shortBuffer.flip();
         return list;
     }
@@ -93,7 +51,6 @@ public class OpusCodec {
         // Assume that the TargetDataLine, line, has already been obtained and
         // opened.
 
-        System.out.println(microphone.getBufferSize());
         //byte[] data = new byte[microphone.getBufferSize() / 120];
         byte[] data = new byte[960];
         // probably way too big
